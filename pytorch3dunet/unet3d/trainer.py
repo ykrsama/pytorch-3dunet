@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import wandb
 
 from pytorch3dunet.datasets.utils import get_train_loaders
 from pytorch3dunet.unet3d.losses import get_loss_criterion
@@ -54,9 +55,13 @@ def create_trainer(config: dict) -> 'UNetTrainer':
     resume = trainer_config.pop('resume', None)
     pre_trained = trainer_config.pop('pre_trained', None)
 
+    f_maps = config['model']['f_maps']
+    wandb_config = {}
+    wandb_config['name'] = 'fmap_' + '_'.join(map(str, f_maps))
+
     return UNetTrainer(model=model, optimizer=optimizer, lr_scheduler=lr_scheduler, loss_criterion=loss_criterion,
                        eval_criterion=eval_criterion, loaders=loaders, tensorboard_formatter=tensorboard_formatter,
-                       resume=resume, pre_trained=pre_trained, **trainer_config)
+                       resume=resume, pre_trained=pre_trained, wandb_config=wandb_config, **trainer_config)
 
 
 def _split_and_move_to_gpu(t):
@@ -109,7 +114,7 @@ class UNetTrainer:
     def __init__(self, model, optimizer, lr_scheduler, loss_criterion, eval_criterion, loaders, checkpoint_dir,
                  max_num_epochs, max_num_iterations, validate_after_iters=200, log_after_iters=100, validate_iters=None,
                  num_iterations=1, num_epoch=0, eval_score_higher_is_better=True, tensorboard_formatter=None,
-                 skip_train_validation=False, resume=None, pre_trained=None, max_val_images=100, **kwargs):
+                 skip_train_validation=False, resume=None, pre_trained=None, max_val_images=100, use_wandb=True, wandb_config=None, **kwargs):
 
         self.max_val_images = max_val_images
         self.model = model
@@ -148,6 +153,13 @@ class UNetTrainer:
         self.num_iterations = num_iterations
         self.num_epochs = num_epoch
         self.skip_train_validation = skip_train_validation
+        self.use_wandb = use_wandb
+        self.wandb_config = wandb_config or {}
+        if self.use_wandb:
+            wandb.init(project=self.wandb_config.get('project', 'pytorch3dunet'),
+                       name=self.wandb_config.get('name', None),
+                       config=self.wandb_config.get('config', {}))
+            wandb.watch(self.model, log="all")
 
         if resume is not None:
             logger.info(f"Loading checkpoint '{resume}'...")
@@ -357,6 +369,8 @@ class UNetTrainer:
             'best_eval_score': self.best_eval_score,
             'optimizer_state_dict': self.optimizer.state_dict(),
         }, is_best, checkpoint_dir=self.checkpoint_dir)
+        if self.use_wandb:
+            wandb.save(last_file_path)
 
     def _log_lr(self):
         lr = self.optimizer.param_groups[0]['lr']
@@ -370,6 +384,8 @@ class UNetTrainer:
 
         for tag, value in tag_value.items():
             self.writer.add_scalar(tag, value, self.num_iterations)
+        if self.use_wandb:
+            wandb.log({tag: value for tag, value in tag_value.items()}, step=self.num_iterations)
 
     def _log_params(self):
         logger.info('Logging model parameters and gradients')
@@ -396,9 +412,39 @@ class UNetTrainer:
             else:
                 img_sources[name] = batch
 
+        
+        wandb_image_batch_count = 0
+        wandb_image_limit = 6
+        
+        try:
+            if prefix.split('_')[0] == 'val' and int(prefix.split('_')[1]) > 6:
+                return
+        except Exception:
+            pass
+
         for name, batch in img_sources.items():
+            wandb_image_count = 0  # Track number of images logged to wandb
             for tag, image in self.tensorboard_formatter(name, batch):
                 self.writer.add_image(prefix + tag, image, self.num_iterations)
+                if self.use_wandb and wandb_image_count < wandb_image_limit:
+                    # Ensure image is in (H, W, C) or (H, W) format for wandb
+                    img = image
+                    if img.ndim == 3:
+                        # If (C, H, W), transpose to (H, W, C)
+                        if img.shape[0] <= 4 and img.shape[1] > 4 and img.shape[2] > 4:
+                            img = np.transpose(img, (1, 2, 0))
+                    elif img.ndim == 4:
+                        # If (N, C, H, W), log first image in batch
+                        img = img[0]
+                        if img.shape[0] <= 4 and img.shape[1] > 4 and img.shape[2] > 4:
+                            img = np.transpose(img, (1, 2, 0))
+                    wandb.log({prefix + tag: wandb.Image(img)}, step=self.num_iterations)
+                    wandb_image_count += 1
+                if wandb_image_count >= wandb_image_limit:
+                    break
+            wandb_image_batch_count += 1
+            if wandb_image_batch_count >= wandb_image_limit:
+                break
 
     @staticmethod
     def _batch_size(input: torch.Tensor) -> int:
@@ -406,3 +452,4 @@ class UNetTrainer:
             return input[0].size(0)
         else:
             return input.size(0)
+

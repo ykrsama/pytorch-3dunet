@@ -709,6 +709,12 @@ class Relabel:
             result = np.stack([result, orig])
         return result
 
+class ClipLabel:
+    def __init__(self, max_value=20, **kwargs):
+        self.max_value = max_value
+
+    def __call__(self, m):
+        return np.clip(m, 0, self.max_value)
 
 class Identity:
     def __init__(self, **kwargs):

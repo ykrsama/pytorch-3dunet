@@ -265,7 +265,7 @@ class SliceBuilder:
     @staticmethod
     def _check_patch_shape(patch_shape):
         assert len(patch_shape) == 3, 'patch_shape must be a 3D tuple'
-        assert patch_shape[1] >= 64 and patch_shape[2] >= 64, 'Height and Width must be greater or equal 64'
+        #assert patch_shape[1] >= 64 and patch_shape[2] >= 64, 'Height and Width must be greater or equal 64'
 
 
 class FilterSliceBuilder(SliceBuilder):
@@ -335,7 +335,7 @@ def _loader_classes(class_name):
 
 def get_slice_builder(raw: np.ndarray, label: np.ndarray, config: dict) -> SliceBuilder:
     assert 'name' in config
-    logger.info(f"Slice builder config: {config}")
+    #logger.info(f"Slice builder config: {config}")
     slice_builder_cls = _loader_classes(config['name'])
     return slice_builder_cls(raw, label, **config)
 
