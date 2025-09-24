@@ -24,10 +24,11 @@ def traverse_h5_paths(file_paths):
     results = []
     for file_path in file_paths:
         if os.path.isdir(file_path):
-            # if file path is a directory take all H5 files in that directory
-            iters = [glob.glob(os.path.join(file_path, ext)) for ext in ['*.h5', '*.hdf', '*.hdf5', '*.hd5']]
-            for fp in chain(*iters):
-                results.append(fp)
+            # recursively find all H5 files in the directory and subdirectories
+            for root, _, files in os.walk(file_path):
+                for fname in files:
+                    if fname.endswith(('.h5', '.hdf', '.hdf5', '.hd5')):
+                        results.append(os.path.join(root, fname))
         else:
             results.append(file_path)
     return results
@@ -99,28 +100,15 @@ class AbstractHDF5Dataset(ConfigDataset):
 
         with h5py.File(file_path, 'r') as f:
             raw = f[raw_internal_path]
-            label = f[label_internal_path] if phase != 'test' else None
-
-            # Support (N, Z, Y, X) shape
-            if raw.ndim == 4:
-                self.n_samples = raw.shape[0]
-                self.volume_shape = raw.shape[1:]
-            else:
-                self.n_samples = 1
+            if raw.ndim == 3:
                 self.volume_shape = raw.shape
-
-            # Continue here
-            self.raw_slices = []
-            self.label_slices = []
-
-            for n in tqdm(range(self.n_samples), desc='Building patch indices...'):
-                raw_n = raw[n] if raw.ndim == 4 else raw
-                label_n = label[n] if (label is not None and label.ndim == 4) else label
-
-                slice_builder = get_slice_builder(raw_n, label_n, slice_builder_config)
-                self.raw_slices.extend([(n,) + raw_idx for raw_idx in slice_builder.raw_slices])
-                if phase != 'test':
-                    self.label_slices.extend([(n,) + label_idx for label_idx in slice_builder.label_slices])
+            else:
+                self.volume_shape = raw.shape[1:]
+            label = f[label_internal_path] if phase != 'test' else None
+            # build slice indices for raw and label data sets
+            slice_builder = get_slice_builder(raw, label, slice_builder_config)
+            self.raw_slices = slice_builder.raw_slices
+            self.label_slices = slice_builder.label_slices
 
         if random_scale is not None:
             assert isinstance(random_scale, int), 'random_scale must be an integer'
@@ -155,10 +143,9 @@ class AbstractHDF5Dataset(ConfigDataset):
 
         if self.phase == 'test':
             if len(raw_idx) == 4:
-                # For (N, Z, Y, X), raw_idx is (n, z, y, x)
-                n = raw_idx[0]
-                spatial_idx = raw_idx[1:]
-                raw_idx_padded = (n,) + _create_padded_indexes(spatial_idx, self.halo_shape)
+                # discard the channel dimension in the slices: predictor requires only the spatial dimensions of the volume
+                raw_idx = raw_idx[1:]  # Remove the first element if raw_idx has 4 elements
+                raw_idx_padded = (slice(None),) + _create_padded_indexes(raw_idx, self.halo_shape)
             else:
                 raw_idx_padded = _create_padded_indexes(raw_idx, self.halo_shape)
 
@@ -189,15 +176,13 @@ class AbstractHDF5Dataset(ConfigDataset):
         def _volume_shape(volume):
             if volume.ndim == 3:
                 return volume.shape
-            elif volume.ndim == 4:
-                return volume.shape[1:]
-            return volume.shape
+            return volume.shape[1:]
 
         with h5py.File(self.file_path, 'r') as f:
             raw = f[self.raw_internal_path]
             label = f[self.label_internal_path]
-            assert raw.ndim in [3, 4], 'Raw dataset must be 3D (DxHxW) or 4D (NxDxHxW)'
-            assert label.ndim in [3, 4], 'Label dataset must be 3D (DxHxW) or 4D (NxDxHxW)'
+            assert raw.ndim in [3, 4], 'Raw dataset must be 3D (DxHxW) or 4D (CxDxHxW)'
+            assert label.ndim in [3, 4], 'Label dataset must be 3D (DxHxW) or 4D (CxDxHxW)'
             assert _volume_shape(raw) == _volume_shape(label), 'Raw and labels have to be of the same size'
 
     @classmethod
@@ -217,8 +202,8 @@ class AbstractHDF5Dataset(ConfigDataset):
         # create datasets concurrently
         with ProcessPoolExecutor() as executor:
             futures = []
-            for file_path in file_paths:
-                logger.info(f'Loading {phase} set from: {file_path}...')
+            for file_path in tqdm(file_paths, desc=f'Building {phase} datasets'):
+                logger.debug(f'Loading {phase} set from: {file_path}...')
                 future = executor.submit(cls, file_path=file_path,
                                          phase=phase,
                                          slice_builder_config=slice_builder_config,
@@ -272,7 +257,6 @@ class StandardHDF5Dataset(AbstractHDF5Dataset):
             with h5py.File(self.file_path, 'r') as f:
                 assert self.raw_internal_path in f, f'Dataset {self.raw_internal_path} not found in {self.file_path}'
                 self._raw = f[self.raw_internal_path][:]
-        # idx is (n, z, y, x) for 4D, (z, y, x) for 3D
         return self._raw[idx]
 
     def get_label_patch(self, idx):
