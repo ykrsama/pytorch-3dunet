@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 from pytorch3dunet.unet3d.buildingblocks import DoubleConv, ResNetBlock, ResNetBlockSE, \
@@ -128,6 +129,104 @@ class AbstractUNet(nn.Module):
             return out, x
 
         return x, x
+
+
+class UNet3DFPGA(nn.Module):
+    """
+    FPGA-optimized 3D U-Net with reduced contraction path for efficient hardware implementation.
+
+    Architecture:
+    input → Conv+ReLU → f_maps[0] ─── concat ──→ f_maps[1] → Conv+ReLU → f_maps[0] → Conv+ReLU → output
+                           │                         ↑
+                       MaxPool                  Upsampling
+                           ↓                         │
+                    f_maps[0] → Conv+ReLU → f_maps[1]
+    """
+
+    def __init__(self, in_channels, out_channels, final_sigmoid=True, f_maps=[64, 128],
+                 layer_order='gcr', num_groups=8, is_segmentation=True, conv_padding=1,
+                 dropout_prob=0.1, **kwargs):
+        super(UNet3DFPGA, self).__init__()
+
+        if isinstance(f_maps, int):
+            f_maps = [f_maps, f_maps * 2]
+
+        assert len(f_maps) == 2, "FPGA-optimized U-Net requires exactly 2 feature map levels"
+
+        self.f_maps = f_maps
+
+        # Input convolution: input → Conv+ReLU → f_maps[0]
+        self.input_conv = DoubleConv(in_channels, f_maps[0], encoder=True,
+                                     order=layer_order, num_groups=num_groups,
+                                     padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+
+        # Encoder (downsampling): MaxPool → f_maps[0] → Conv+ReLU → f_maps[1]
+        self.encoder = nn.Sequential(
+            nn.MaxPool3d(kernel_size=2),
+            DoubleConv(f_maps[0], f_maps[1], encoder=True,
+                       order=layer_order, num_groups=num_groups,
+                       padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+        )
+
+        # Decoder (upsampling): Upsample → concat → f_maps[1] → Conv+ReLU → f_maps[0]
+        self.upsampling = nn.Upsample(scale_factor=2, mode='nearest')
+        self.decoder_conv = DoubleConv(f_maps[0] + f_maps[1], f_maps[0], encoder=False,
+                                       order=layer_order, num_groups=num_groups,
+                                       padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+
+        # Output convolution: f_maps[0] → Conv+ReLU → output
+        self.output_conv = DoubleConv(f_maps[0], f_maps[0], encoder=False,
+                                      order=layer_order, num_groups=num_groups,
+                                      padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+
+        # Final 1x1 convolution
+        self.final_conv = nn.Conv3d(f_maps[0], out_channels, 1)
+
+        if is_segmentation:
+            if final_sigmoid:
+                self.final_activation = nn.Sigmoid()
+            else:
+                self.final_activation = nn.Softmax(dim=1)
+        else:
+            self.final_activation = None
+
+    def forward(self, x, return_logits=False):
+        # Input → Conv+ReLU → f_maps[0]
+        x1 = self.input_conv(x)
+
+        # MaxPool → f_maps[0] → Conv+ReLU → f_maps[1]
+        x2 = self.encoder(x1)
+
+        # Upsampling
+        x_up = self.upsampling(x2)
+
+        # Ensure upsampled tensor matches skip connection size
+        if x_up.shape[2:] != x1.shape[2:]:
+            x_up = torch.nn.functional.interpolate(
+                x_up, size=x1.shape[2:], mode='nearest'
+            )
+
+        # Concatenate skip connection: concat(x1, x_up)
+        x_concat = torch.cat([x1, x_up], dim=1)
+
+        # f_maps[1] → Conv+ReLU → f_maps[0]
+        x_dec = self.decoder_conv(x_concat)
+
+        # f_maps[0] → Conv+ReLU → f_maps[0] → output
+        x_out = self.output_conv(x_dec)
+
+        # Final convolution
+        logits = self.final_conv(x_out)
+
+        if self.final_activation is not None:
+            output = self.final_activation(logits)
+            if return_logits:
+                return output, logits
+            return output
+
+        if return_logits:
+            return logits, logits
+        return logits
 
 
 class UNet3D(AbstractUNet):

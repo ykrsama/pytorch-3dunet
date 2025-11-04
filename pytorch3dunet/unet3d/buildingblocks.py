@@ -1,10 +1,20 @@
-from functools import partial
-
 import torch
 from torch import nn as nn
 from torch.nn import functional as F
 
 from pytorch3dunet.unet3d.se import ChannelSELayer3D, ChannelSpatialSELayer3D, SpatialSELayer3D
+
+
+def create_partial_function(func, **fixed_kwargs):
+    """
+    Self-defined partial function replacement to avoid using functools.partial.
+    Creates a new function with fixed keyword arguments.
+    """
+    def partial_func(*args, **kwargs):
+        # Merge fixed kwargs with runtime kwargs (runtime takes precedence)
+        merged_kwargs = {**fixed_kwargs, **kwargs}
+        return func(*args, **merged_kwargs)
+    return partial_func
 
 
 def create_conv(in_channels, out_channels, kernel_size, order, num_groups, padding,
@@ -368,10 +378,10 @@ class Decoder(nn.Module):
             # no upsampling
             self.upsampling = NoUpsampling()
             # concat joining
-            self.joining = partial(self._joining, concat=True)
+            self.joining = create_partial_function(self._joining, concat=True)
 
         # perform joining operation
-        self.joining = partial(self._joining, concat=concat)
+        self.joining = create_partial_function(self._joining, concat=concat)
 
         # adapt the number of in_channels for the ResNetBlock
         if adapt_channels is True:
@@ -487,7 +497,7 @@ class InterpolateUpsampling(AbstractUpsampling):
     """
 
     def __init__(self, mode='nearest'):
-        upsample = partial(self._interpolate, mode=mode)
+        upsample = create_partial_function(self._interpolate, mode=mode)
         super().__init__(upsample)
 
     @staticmethod

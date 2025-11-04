@@ -13,7 +13,7 @@ model:
   # determines the order of operators in a single layer (gcr - GroupNorm+Conv3d+ReLU)
   layer_order: gcr
   # number of features at each level of the U-Net
-  f_maps: [32, 64, 128, 256]
+  f_maps: [64, 128]
   # number of groups in the groupnorm
   num_groups: 8
   # apply element-wise nn.Sigmoid after the final 1x1 convolution, otherwise apply nn.Softmax
@@ -25,16 +25,16 @@ model:
 # trainer configuration
 trainer:
   # path to the checkpoint directory
-  checkpoint_dir: checkpoint_32_4_mixed_2
+  checkpoint_dir: checkpoint_64_mixed
   # path to latest checkpoint; if provided the training will be resumed from that checkpoint
   resume: null
   # path to the best_checkpoint.pytorch; to be used for fine-tuning the model with additional ground truth
   # make sure to decrease the learning rate in the optimizer config accordingly
   pre_trained: null
   # how many iterations between validations
-  validate_after_iters: 1000
+  validate_after_iters: 150
   # how many iterations between tensorboard logging
-  log_after_iters: 100
+  log_after_iters: 50
   # max number of epochs
   max_num_epochs: 500
   # max number of iterations
@@ -75,7 +75,7 @@ loaders:
   # when reading from multiple threads.
   dataset: StandardHDF5Dataset
   # batch dimension; if number of GPUs is N > 1, then a batch_size of N * batch_size will automatically be taken for DataParallel
-  batch_size: 512
+  batch_size: 128
   # how many subprocesses to use for data loading
   num_workers: 16
   # path to the raw data within the H5
@@ -92,7 +92,7 @@ loaders:
   train:
     # paths to the training datasets
     file_paths:
-      - /fs-computility/ai4s/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extracted/train-mixed
+      - /fs-computility-new/UPDZ18_lishu/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extracted/train
 
     # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
     slice_builder:
@@ -149,7 +149,7 @@ loaders:
   val:
     # paths to the val datasets
     file_paths:
-      - /fs-computility/ai4s/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extracted/val-mixed
+      - /fs-computility-new/UPDZ18_lishu/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extracted/val
 
     # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
     slice_builder:
