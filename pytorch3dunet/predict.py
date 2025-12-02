@@ -8,6 +8,7 @@ from pytorch3dunet.datasets.utils import get_test_loaders
 from pytorch3dunet.unet3d import utils
 from pytorch3dunet.unet3d.config import load_config
 from pytorch3dunet.unet3d.model import get_model
+from pytorch3dunet.unet3d.fpga_unet_modular import UNet3DFPGAModular
 
 logger = utils.get_logger('UNet3DPredict')
 
@@ -26,6 +27,34 @@ def get_predictor(model, config):
     return predictor_class(model, output_dir, out_channels, **predictor_config)
 
 
+def load_model_checkpoint(model, model_path):
+    """
+    Load model checkpoint with support for modular FPGA checkpoints.
+
+    Args:
+        model: The model instance to load checkpoints into
+        model_path: Path to the checkpoint file or directory
+    """
+    # Check if this is a UNet3DFPGAModular model
+    actual_model = model.module if isinstance(model, nn.DataParallel) else model
+
+    if isinstance(actual_model, UNet3DFPGAModular):
+        # Check if model_path is a directory containing modular checkpoints
+        modular_dir = os.path.join(os.path.dirname(model_path), 'modular_blocks')
+        metadata_path = os.path.join(modular_dir, 'model_metadata.pth')
+
+        if os.path.exists(metadata_path):
+            logger.info(f'Loading modular checkpoints from {modular_dir}...')
+            actual_model.load_modular_checkpoints(modular_dir)
+            return
+        else:
+            logger.info(f'Modular checkpoint directory not found at {modular_dir}, trying standard checkpoint...')
+
+    # Fall back to standard checkpoint loading
+    logger.info(f'Loading standard checkpoint from {model_path}...')
+    utils.load_checkpoint(model_path, model)
+
+
 def main():
     # Load configuration
     config, _ = load_config()
@@ -35,10 +64,9 @@ def main():
 
     # Load model state
     model_path = config['model_path']
-    logger.info(f'Loading model from {model_path}...')
-    utils.load_checkpoint(model_path, model)
-    # use DataParallel if more than 1 GPU available
+    load_model_checkpoint(model, model_path)
 
+    # use DataParallel if more than 1 GPU available
     if torch.cuda.device_count() > 1 and not config['device'] == 'cpu':
         model = nn.DataParallel(model)
         logger.info(f'Using {torch.cuda.device_count()} GPUs for prediction')

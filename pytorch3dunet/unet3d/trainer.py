@@ -14,6 +14,7 @@ from pytorch3dunet.datasets.utils import get_train_loaders
 from pytorch3dunet.unet3d.losses import get_loss_criterion
 from pytorch3dunet.unet3d.metrics import get_evaluation_metric
 from pytorch3dunet.unet3d.model import get_model, is_model_2d
+from pytorch3dunet.unet3d.fpga_unet_modular import UNet3DFPGAModular
 from pytorch3dunet.unet3d.utils import get_logger, get_tensorboard_formatter, create_optimizer, \
     create_lr_scheduler, get_number_of_learnable_parameters
 from . import utils
@@ -356,8 +357,10 @@ class UNetTrainer:
         # see: https://discuss.pytorch.org/t/solved-keyerror-unexpected-key-module-encoder-embedding-weight-in-state-dict/1686/20
         if isinstance(self.model, nn.DataParallel):
             state_dict = self.model.module.state_dict()
+            model_for_modular_save = self.model.module
         else:
             state_dict = self.model.state_dict()
+            model_for_modular_save = self.model
 
         last_file_path = os.path.join(self.checkpoint_dir, 'last_checkpoint.pytorch')
         logger.info(f"Saving checkpoint to '{last_file_path}'")
@@ -369,6 +372,19 @@ class UNetTrainer:
             'best_eval_score': self.best_eval_score,
             'optimizer_state_dict': self.optimizer.state_dict(),
         }, is_best, checkpoint_dir=self.checkpoint_dir)
+
+        # Save individual modular checkpoints if using UNet3DFPGAModular
+        if isinstance(model_for_modular_save, UNet3DFPGAModular):
+            modular_checkpoint_dir = os.path.join(self.checkpoint_dir, 'modular_blocks')
+            logger.info(f"Saving modular checkpoints to '{modular_checkpoint_dir}'")
+            checkpoint_paths = model_for_modular_save.save_modular_checkpoints(modular_checkpoint_dir)
+            logger.info(f"Saved {len(checkpoint_paths)} modular block checkpoints")
+
+            # If this is the best model, also save modular blocks in best directory
+            if is_best:
+                best_modular_dir = os.path.join(self.checkpoint_dir, 'best_modular_blocks')
+                logger.info(f"Saving best modular checkpoints to '{best_modular_dir}'")
+                model_for_modular_save.save_modular_checkpoints(best_modular_dir)
         if self.use_wandb:
             wandb.save(last_file_path)
 
