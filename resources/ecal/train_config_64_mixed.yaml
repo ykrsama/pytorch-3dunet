@@ -91,6 +91,7 @@ loaders:
   # path to the pixel-wise weight map withing the H5 if present
   weight_internal_path: null
   # configuration of the train loader
+  global_normalization: false
   train:
     # paths to the training datasets
     file_paths:
