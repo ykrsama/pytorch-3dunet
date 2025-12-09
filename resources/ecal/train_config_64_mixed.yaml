@@ -5,13 +5,13 @@
 # model configuration
 model:
   # model class, e.g. UNet3D, ResidualUNet3D
-  name: UNet3D
+  name: UNet3DFPGA
   # number of input channels to the model
   in_channels: 1
   # number of output channels
   out_channels: 5
   # determines the order of operators in a single layer (gcr - GroupNorm+Conv3d+ReLU)
-  layer_order: gcr
+  layer_order: cr
   # number of features at each level of the U-Net
   f_maps: [64, 128]
   # number of groups in the groupnorm
@@ -22,6 +22,7 @@ model:
   final_sigmoid: false
   # if True applies the final normalization layer (sigmoid or softmax), otherwise the networks returns the output from the final convolution layer; use False for regression problems, e.g. de-noising
   is_segmentation: true
+
 # trainer configuration
 trainer:
   # path to the checkpoint directory
@@ -98,9 +99,9 @@ loaders:
     slice_builder:
       name: FilterSliceBuilder
       # train patch size given to the network (adapt to fit in your GPU mem, generally the bigger patch the better)
-      patch_shape: [43, 43, 11]
+      patch_shape: [11, 43, 43]
       # train stride between patches
-      stride_shape: [43, 43, 11]
+      stride_shape: [11, 43, 43]
       ## minimum volume of the labels in the patch
       threshold: 0.01
       # probability of accepting patches which do not fulfil the threshold criterion
@@ -109,7 +110,7 @@ loaders:
     transformer:
       raw:
         # subtract mean and divide by std dev
-        - name: Standardize
+        # - name: Standardize
         # randomly flips the volume in one of the axis
         #- name: RandomFlip
         # randomly rotates the volume with 90 deg across a randomly chosen plane
@@ -124,6 +125,7 @@ loaders:
         #  spline_order: 3
         - name: ToTensor
           expand_dims: true
+          whd2dhw: true
       label:
         #- name: RandomFlip
         #- name: RandomRotate90
@@ -143,6 +145,7 @@ loaders:
         #  #  boundary: false
         - name: ToTensor
           expand_dims: false
+          whd2dhw: true
           dtype: int64
 
   # configuration of the val loader
@@ -165,10 +168,12 @@ loaders:
 
     transformer:
       raw:
-        - name: Standardize
+        # - name: Standardize
         - name: ToTensor
           expand_dims: true
+          whd2dhw: true
       label:
         - name: ToTensor
           expand_dims: false
+          whd2dhw: true
           dtype: int64

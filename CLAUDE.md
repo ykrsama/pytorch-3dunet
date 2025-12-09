@@ -11,6 +11,7 @@ This is a PyTorch implementation of 3D U-Net and its variants for medical image 
 ### Core Modules
 
 - `pytorch3dunet/unet3d/model.py` - Main U-Net model implementations (UNet3D, UNet3DFPGA, ResidualUNet3D, ResidualUNetSE3D)
+- `pytorch3dunet/unet3d/fpga_unet_modular.py` - U-Net model implementation for UNet3DFPGAModular
 - `pytorch3dunet/unet3d/trainer.py` - Training orchestration and model management
 - `pytorch3dunet/unet3d/predictor.py` - Prediction pipeline for inference
 - `pytorch3dunet/datasets/` - Data loading utilities (HDF5 datasets, transformations)

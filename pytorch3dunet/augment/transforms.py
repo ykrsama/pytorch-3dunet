@@ -662,15 +662,24 @@ class ToTensor:
         expand_dims (bool): if True, adds a channel dimension to the input data
         dtype (np.dtype): the desired output data type
         normalize (bool): zero-one normalization of the input data
+        whd2dhw (bool): if True, reshapes from (W, H, D) to (D, H, W) order
     """
 
-    def __init__(self, expand_dims, dtype=np.float32, normalize=False, **kwargs):
+    def __init__(self, expand_dims, dtype=np.float32, normalize=False, whd2dhw=False, **kwargs):
         self.expand_dims = expand_dims
         self.dtype = dtype
         self.normalize = normalize
+        self.whd2dhw = whd2dhw
 
     def __call__(self, m):
         assert m.ndim in [3, 4], 'Supports only 3D (DxHxW) or 4D (CxDxHxW) images'
+
+        # reshape from WHD to DHW if requested
+        if self.whd2dhw and m.ndim == 3:
+            m = np.transpose(m, (2, 1, 0))  # WHD -> DHW
+        elif self.whd2dhw and m.ndim == 4:
+            m = np.transpose(m, (0, 3, 2, 1))  # CWHD -> CDHW
+
         # add channel dimension
         if self.expand_dims and m.ndim == 3:
             m = np.expand_dims(m, axis=0)

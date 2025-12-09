@@ -137,51 +137,55 @@ class UNet3DFPGA(nn.Module):
     FPGA-optimized 3D U-Net with reduced contraction path for efficient hardware implementation.
 
     Architecture:
-    input → Conv+ReLU → f_maps[0] ─── concat ──→ f_maps[1] → Conv+ReLU → f_maps[0] → Conv+ReLU → output
+    input → Conv2D+ReLU → f_maps[0] ─────────────── concat → f_maps[0]+f_maps[1] → Conv2D+ReLU → f_maps[0] → Conv+ReLU → output
                            │                         ↑
-                       MaxPool                  Upsampling
+                       MaxPool2D                  Upsampling
                            ↓                         │
-                    f_maps[0] → Conv+ReLU → f_maps[1]
+                    f_maps[0] → Conv2D+ReLU → f_maps[1]
     """
 
     def __init__(self, in_channels, out_channels, final_sigmoid=True, f_maps=[64, 128],
-                 layer_order='gcr', num_groups=8, is_segmentation=True, conv_padding=1,
-                 dropout_prob=0.1, **kwargs):
+                 layer_order='cr', num_groups=8, is_segmentation=True, conv_padding=1,
+                 dropout_prob=0.1, depth_channels=8, **kwargs):
         super(UNet3DFPGA, self).__init__()
 
         if isinstance(f_maps, int):
             f_maps = [f_maps, f_maps * 2]
 
         assert len(f_maps) == 2, "FPGA-optimized U-Net requires exactly 2 feature map levels"
+        assert depth_channels == 11, "DEBUG, test if config passed correctly"
 
         self.f_maps = f_maps
+        self.out_channels = out_channels
+        self.depth_channels = depth_channels
 
         # Input convolution: input → Conv+ReLU → f_maps[0]
-        self.input_conv = DoubleConv(in_channels, f_maps[0], encoder=True,
+        self.input_conv = DoubleConv(in_channels * depth_channels, f_maps[0], encoder=True,
                                      order=layer_order, num_groups=num_groups,
-                                     padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+                                     padding=conv_padding, dropout_prob=dropout_prob, is3d=False)
 
         # Encoder (downsampling): MaxPool → f_maps[0] → Conv+ReLU → f_maps[1]
         self.encoder = nn.Sequential(
-            nn.MaxPool3d(kernel_size=2),
+            nn.MaxPool2d(kernel_size=2),
             DoubleConv(f_maps[0], f_maps[1], encoder=True,
                        order=layer_order, num_groups=num_groups,
-                       padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+                       padding=conv_padding, dropout_prob=dropout_prob, is3d=False)
         )
 
         # Decoder (upsampling): Upsample → concat → f_maps[1] → Conv+ReLU → f_maps[0]
         self.upsampling = nn.Upsample(scale_factor=2, mode='nearest')
         self.decoder_conv = DoubleConv(f_maps[0] + f_maps[1], f_maps[0], encoder=False,
                                        order=layer_order, num_groups=num_groups,
-                                       padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+                                       padding=conv_padding, dropout_prob=dropout_prob, is3d=False)
+
 
         # Output convolution: f_maps[0] → Conv+ReLU → output
-        self.output_conv = DoubleConv(f_maps[0], f_maps[0], encoder=False,
+        self.output_conv = DoubleConv(f_maps[0], 1, encoder=False,
                                       order=layer_order, num_groups=num_groups,
-                                      padding=conv_padding, dropout_prob=dropout_prob, is3d=True)
+                                      padding=conv_padding, dropout_prob=dropout_prob, is3d=False)
 
         # Final 1x1 convolution
-        self.final_conv = nn.Conv3d(f_maps[0], out_channels, 1)
+        self.final_conv = nn.Conv2d(f_maps[0], out_channels * depth_channels, 1)
 
         if is_segmentation:
             if final_sigmoid:
@@ -192,6 +196,10 @@ class UNet3DFPGA(nn.Module):
             self.final_activation = None
 
     def forward(self, x, return_logits=False):
+        # Reshape input from (batch, c, d, h, w) to (batch, c*d, h, w)
+        batch_size, c, d, h, w = x.shape
+        x = x.view(batch_size, c * d, h, w)
+
         # Input → Conv+ReLU → f_maps[0]
         x1 = self.input_conv(x)
 
@@ -218,6 +226,10 @@ class UNet3DFPGA(nn.Module):
 
         # Final convolution
         logits = self.final_conv(x_out)
+
+        # Reshape from (batch, out_channels * depth_channels, h, w) to (batch, out_channels, depth_channels, h, w)
+        batch_size, _, h, w = logits.shape
+        logits = logits.view(batch_size, self.out_channels, self.depth_channels, h, w)
 
         if self.final_activation is not None:
             output = self.final_activation(logits)
