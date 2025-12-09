@@ -178,12 +178,6 @@ class UNet3DFPGA(nn.Module):
                                        order=layer_order, num_groups=num_groups,
                                        padding=conv_padding, dropout_prob=dropout_prob, is3d=False)
 
-
-        # Output convolution: f_maps[0] → Conv+ReLU → output
-        self.output_conv = DoubleConv(f_maps[0], 1, encoder=False,
-                                      order=layer_order, num_groups=num_groups,
-                                      padding=conv_padding, dropout_prob=dropout_prob, is3d=False)
-
         # Final 1x1 convolution
         self.final_conv = nn.Conv2d(f_maps[0], out_channels * depth_channels, 1)
 
@@ -220,9 +214,6 @@ class UNet3DFPGA(nn.Module):
 
         # f_maps[1] → Conv+ReLU → f_maps[0]
         x_dec = self.decoder_conv(x_concat)
-
-        # f_maps[0] → Conv+ReLU → f_maps[0] → output
-        x_out = self.output_conv(x_dec)
 
         # Final convolution
         logits = self.final_conv(x_out)

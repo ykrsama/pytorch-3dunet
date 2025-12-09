@@ -14,6 +14,7 @@ model:
   layer_order: cr
   # number of features at each level of the U-Net
   f_maps: [64, 128]
+  depth_channels: 11 # D - patch_shape[0]
   # number of groups in the groupnorm
   num_groups: 8
   # apply element-wise nn.Sigmoid after the final 1x1 convolution, otherwise apply nn.Softmax
@@ -158,9 +159,9 @@ loaders:
     slice_builder:
       name: FilterSliceBuilder
       # train patch size given to the network (adapt to fit in your GPU mem, generally the bigger patch the better)
-      patch_shape: [43, 43, 11]
+      patch_shape: [11, 43, 43]
       # train stride between patches
-      stride_shape: [43, 43, 11]
+      stride_shape: [11, 43, 43]
       # minimum volume of the labels in the patch
       threshold: 0.01
       # probability of accepting patches which do not fulfil the threshold criterion
