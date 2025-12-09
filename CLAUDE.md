@@ -113,3 +113,47 @@ Test coverage includes:
 - Loss function correctness
 - Data loading pipelines
 - Training/prediction workflows
+
+## UNet3DFPGA
+
+```bash
+(module): UNet3DFPGA(
+    (input_conv): DoubleConv(
+      (SingleConv1): SingleConv(
+        (conv): Conv2d(11, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        (ReLU): ReLU(inplace=True)
+      )
+      (SingleConv2): SingleConv(
+        (conv): Conv2d(32, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        (ReLU): ReLU(inplace=True)
+      )
+    )
+    (encoder): Sequential(
+      (0): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (1): DoubleConv(
+        (SingleConv1): SingleConv(
+          (conv): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+          (ReLU): ReLU(inplace=True)
+        )
+        (SingleConv2): SingleConv(
+          (conv): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+          (ReLU): ReLU(inplace=True)
+        )
+      )
+    )
+    (upsampling): Upsample(scale_factor=2.0, mode='nearest')
+    (decoder_conv): DoubleConv(
+      (SingleConv1): SingleConv(
+        (conv): Conv2d(192, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        (ReLU): ReLU(inplace=True)
+      )
+      (SingleConv2): SingleConv(
+        (conv): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        (ReLU): ReLU(inplace=True)
+      )
+    )
+    (final_conv): Conv2d(64, 55, kernel_size=(1, 1), stride=(1, 1))
+    (final_activation): Softmax(dim=1)
+  )
+)
+```

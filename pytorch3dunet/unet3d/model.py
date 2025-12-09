@@ -216,7 +216,7 @@ class UNet3DFPGA(nn.Module):
         x_dec = self.decoder_conv(x_concat)
 
         # Final convolution
-        logits = self.final_conv(x_out)
+        logits = self.final_conv(x_dec)
 
         # Reshape from (batch, out_channels * depth_channels, h, w) to (batch, out_channels, depth_channels, h, w)
         batch_size, _, h, w = logits.shape
