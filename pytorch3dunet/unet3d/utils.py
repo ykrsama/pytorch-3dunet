@@ -50,7 +50,23 @@ def load_checkpoint(checkpoint_path, model, optimizer=None,
         raise IOError(f"Checkpoint '{checkpoint_path}' does not exist")
 
     state = torch.load(checkpoint_path, map_location='cpu')
-    model.load_state_dict(state[model_key])
+    model_state_dict = state[model_key]
+
+    # Handle DataParallel state dict mismatch
+    model_keys = set(model.state_dict().keys())
+    checkpoint_keys = set(model_state_dict.keys())
+
+    # Check if we need to add or remove "module." prefix
+    if not model_keys.intersection(checkpoint_keys):
+        # No matching keys, try to fix the mismatch
+        if any(key.startswith('module.') for key in model_keys) and not any(key.startswith('module.') for key in checkpoint_keys):
+            # Model has DataParallel wrapper, checkpoint doesn't - add "module." prefix
+            model_state_dict = {'module.' + key: value for key, value in model_state_dict.items()}
+        elif not any(key.startswith('module.') for key in model_keys) and any(key.startswith('module.') for key in checkpoint_keys):
+            # Model doesn't have DataParallel wrapper, checkpoint does - remove "module." prefix
+            model_state_dict = {key.replace('module.', ''): value for key, value in model_state_dict.items()}
+
+    model.load_state_dict(model_state_dict)
 
     if optimizer is not None:
         optimizer.load_state_dict(state[optimizer_key])
