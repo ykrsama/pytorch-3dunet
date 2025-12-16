@@ -13,7 +13,7 @@ model:
   # determines the order of operators in a single layer (gcr - GroupNorm+Conv3d+ReLU)
   layer_order: cr
   # number of features at each level of the U-Net
-  f_maps: [64, 128]
+  f_maps: [128, 256]
   depth_channels: 11 # Depth of image
   # number of groups in the groupnorm
   num_groups: 8
@@ -27,12 +27,12 @@ model:
 # trainer configuration
 trainer:
   # path to the checkpoint directory
-  checkpoint_dir: checkpoint_64_mixed
+  checkpoint_dir: checkpoint_128_mixed_ft_inclusive
   # path to latest checkpoint; if provided the training will be resumed from that checkpoint
   resume: null
   # path to the best_checkpoint.pytorch; to be used for fine-tuning the model with additional ground truth
   # make sure to decrease the learning rate in the optimizer config accordingly
-  pre_trained: null
+  pre_trained: checkpoint_128_mixed/best_checkpoint.pytorch
   # how many iterations between validations
   validate_after_iters: 1000
   # how many iterations between tensorboard logging
@@ -52,9 +52,9 @@ loss:
 # optimizer configuration
 optimizer:
   # initial learning rate
-  learning_rate: 0.0002
+  learning_rate: 0.00001 # 0.0002
   # weight decay
-  weight_decay: 0.00001
+  weight_decay: 0.00000001 # 0.00001
 # evaluation metric
 eval_metric:
   # use average precision metric
@@ -95,7 +95,7 @@ loaders:
   train:
     # paths to the training datasets
     file_paths:
-      - /fs-computility-new/UPDZ18_lishu/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extract_mixed/train
+      - /fs-computility-new/UPDZ18_lishu/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extract_inclusive/train
 
     # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
     slice_builder:
@@ -154,7 +154,7 @@ loaders:
   val:
     # paths to the val datasets
     file_paths:
-      - /fs-computility-new/UPDZ18_lishu/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extract_mixed/val
+      - /fs-computility-new/UPDZ18_lishu/xlzhu/data/ml-io/e-_E4_W_noECALBField_ECAL/extract_inclusive/val
 
     # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
     slice_builder:
