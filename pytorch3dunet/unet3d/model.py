@@ -4,7 +4,6 @@ from torch import nn
 from pytorch3dunet.unet3d.buildingblocks import DoubleConv, ResNetBlock, ResNetBlockSE, \
     create_decoders, create_encoders
 from pytorch3dunet.unet3d.utils import get_class, number_of_features_per_level
-from pytorch3dunet.unet3d.fpga_unet_modular import UNet3DFPGAModular
 
 
 class AbstractUNet(nn.Module):
